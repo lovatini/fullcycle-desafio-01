@@ -3,14 +3,12 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"github.com/google/uuid"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"time"
 )
 
@@ -73,26 +71,31 @@ func main() {
 func QuotationHandler(w http.ResponseWriter, r *http.Request) {
 	var data, err = GetQuotationClient()
 	if err != nil {
-		LogError(err)
+		log.Printf("[Error] Get quotation error: %v\n", err)
 		return
 	}
 
 	dbSqlite, err := OpenDatabase()
 	if err != nil {
-		LogError(err)
+		log.Printf("[Error] Open database error: %v\n", err)
 		return
 	}
-	SaveQuotation(dbSqlite, data.UsdBrl)
+
+	err = SaveQuotation(dbSqlite, data.UsdBrl)
+	if err != nil {
+		log.Printf("[Error] Salve quotation error: %v\n", err)
+		return
+	}
 
 	res, err := json.Marshal(data.UsdBrl)
 	if err != nil {
-		LogError(err)
+		log.Printf("[Error] Parse json error: %v\n", err)
 		return
 	}
 
 	_, err = w.Write(res)
 	if err != nil {
-		LogError(err)
+		log.Printf("[Error] Write response error: %v\n", err)
 		return
 	}
 }
@@ -142,20 +145,15 @@ func OpenDatabase() (*gorm.DB, error) {
 	return dbSqlite, err
 }
 
-func SaveQuotation(dbSqlite *gorm.DB, dto QuotationDto) {
+func SaveQuotation(dbSqlite *gorm.DB, dto QuotationDto) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
 	defer cancel()
 
-	tx := dbSqlite.WithContext(ctx).Begin()
+	tx := dbSqlite.WithContext(ctx)
 	var c = NewQuotationEntity(dto)
-	tx.Debug().Save(&c)
-	tx.Commit()
-}
-
-func LogError(errLog error) {
-	log.Printf("Error: %v\n\n", errLog)
-	_, err := fmt.Fprintf(os.Stderr, "Error: %v\n", errLog)
+	err := tx.Save(&c).Error
 	if err != nil {
-		return
+		return err
 	}
+	return nil
 }
